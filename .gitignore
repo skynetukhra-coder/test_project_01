@@ -1,0 +1,33 @@
+# Dependencies
+node_modules/
+**/node_modules/
+
+# Production Builds
+dist/
+**/dist/
+dist-ssr/
+
+# Uploaded Media (Excluded as requested)
+uploads/*
+**/uploads/*
+!**/uploads/.gitkeep
+
+# Environment & Secrets
+.env
+*.env
+*.env.local
+
+# Database dumps & SQL
+*.sql
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Editor & OS files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
