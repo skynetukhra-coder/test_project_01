@@ -170,38 +170,48 @@ function WalletManagement() {
 
         const logTime = new Date(r.rawDate).getTime();
         if (startDate) {
-            const start = new Date(startDate);
-            start.setHours(0, 0, 0, 0);
+            const start = new Date(startDate + "T00:00:00");
             if (logTime < start.getTime()) return false;
         }
         if (endDate) {
-            const end = new Date(endDate);
-            end.setHours(23, 59, 59, 999);
+            const end = new Date(endDate + "T23:59:59.999");
             if (logTime > end.getTime()) return false;
         }
         return true;
     });
+
+    const totalRechargeSum = filteredUserRecharges
+        .filter(r => r.status === "SUCCESS")
+        .reduce((sum, r) => sum + parseFloat(r.amount || 0), 0);
 
     const printReport = () => {
         const printWindow = window.open("", "_blank");
         printWindow.document.write(`
             <html>
                 <head>
-                    <title>User Wallet Recharges Report</title>
+                    <title>Wallet Recharges Report</title>
                     <style>
                         body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; padding: 20px; color: #333; }
                         h1 { margin-bottom: 5px; color: #2c3e50; }
                         p { margin-top: 0; color: #7f8c8d; font-size: 14px; }
-                        table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+                        .summary-bar { background: #f1f5f9; padding: 10px 15px; border-radius: 6px; margin: 15px 0; font-size: 14px; font-weight: 600; color: #1e293b; }
+                        table { width: 100%; border-collapse: collapse; margin-top: 10px; }
                         th, td { border: 1px solid #ddd; padding: 10px; text-align: left; font-size: 13px; }
                         th { background-color: #f8f9fa; color: #2c3e50; }
                         tr:nth-child(even) { background-color: #f9f9f9; }
+                        .badge-success { color: #15803d; font-weight: bold; }
+                        .badge-pending { color: #d97706; font-weight: bold; }
+                        .badge-cancelled { color: #dc2626; font-weight: bold; }
                     </style>
                 </head>
                 <body>
-                    <h1>Canteen User Wallet Recharges Report (UPI / QR)</h1>
+                    <h1>Canteen Wallet Recharges Report</h1>
                     <p>Generated on: ${new Date().toLocaleString()}</p>
                     <p>Date Range: ${startDate || 'Start'} to ${endDate || 'End'}</p>
+                    <div class="summary-bar">
+                        Total Records: ${filteredUserRecharges.length} &nbsp;|&nbsp; 
+                        Total Recharged Amount: ₹${totalRechargeSum.toLocaleString("en-IN", { minimumFractionDigits: 2 })}
+                    </div>
                     <table>
                         <thead>
                             <tr>
@@ -215,7 +225,13 @@ function WalletManagement() {
                             </tr>
                         </thead>
                         <tbody>
-                            ${filteredUserRecharges.map(r => `
+                            ${filteredUserRecharges.length === 0 ? `
+                                <tr>
+                                    <td colspan="7" style="text-align: center; color: #888; padding: 20px;">
+                                        No recharge transactions found for the selected date range.
+                                    </td>
+                                </tr>
+                            ` : filteredUserRecharges.map(r => `
                                 <tr>
                                     <td>${r.time}</td>
                                     <td>${r.employee_code}</td>
@@ -223,7 +239,11 @@ function WalletManagement() {
                                     <td>₹${parseFloat(r.amount).toFixed(2)}</td>
                                     <td>${r.payment_method}</td>
                                     <td>${r.utr_number}</td>
-                                    <td>${r.status}</td>
+                                    <td>
+                                        <span class="${r.status === 'SUCCESS' ? 'badge-success' : r.status === 'PENDING' ? 'badge-pending' : 'badge-cancelled'}">
+                                            ${r.status === 'SUCCESS' ? 'RECHARGED' : r.status}
+                                        </span>
+                                    </td>
                                 </tr>
                             `).join('')}
                         </tbody>
@@ -243,13 +263,13 @@ function WalletManagement() {
     const exportToCSV = () => {
         const headers = ["Date & Time", "Employee ID", "Employee Name", "Amount (₹)", "Payment Method", "Transaction / UTR ID", "Status"];
         const rows = filteredUserRecharges.map(r => [
-            r.time,
-            r.employee_code,
-            r.employee_name,
+            `"${r.time || ''}"`,
+            `"${r.employee_code || ''}"`,
+            `"${r.employee_name || ''}"`,
             r.amount,
-            r.payment_method,
-            r.utr_number,
-            r.status
+            `"${r.payment_method || ''}"`,
+            `"${r.utr_number || ''}"`,
+            `"${r.status === 'SUCCESS' ? 'RECHARGED' : r.status}"`
         ]);
 
         const csvContent = "data:text/csv;charset=utf-8," 
@@ -258,7 +278,7 @@ function WalletManagement() {
         const encodedUri = encodeURI(csvContent);
         const link = document.createElement("a");
         link.setAttribute("href", encodedUri);
-        link.setAttribute("download", `user_wallet_recharges_${startDate || 'all'}_to_${endDate || 'all'}.csv`);
+        link.setAttribute("download", `wallet_recharges_${startDate || 'all'}_to_${endDate || 'all'}.csv`);
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
@@ -367,89 +387,6 @@ function WalletManagement() {
                 </div>
             </div>
 
-            {/* REPLACED LINE CHART: USER SELF-SERVICE WALLET RECHARGES PANEL */}
-            <div className="user-recharges-card">
-                <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "6px" }}>
-                    <FaQrcode style={{ fontSize: "22px", color: "#2563eb" }} />
-                    <h2 style={{ margin: 0 }}>User Self-Service Wallet Recharges (QR Code & UPI)</h2>
-                </div>
-                <p>Process and confirm wallet top-up requests submitted by users via UPI apps & QR Scan.</p>
-
-                <table>
-                    <thead>
-                        <tr>
-                            <th>Date & Time</th>
-                            <th>Employee Code</th>
-                            <th>Employee Name</th>
-                            <th>Amount (₹)</th>
-                            <th>Method</th>
-                            <th>Transaction / UTR ID</th>
-                            <th>Actions / Status</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {filteredUserRecharges.length === 0 ? (
-                            <tr>
-                                <td colSpan="7" style={{ textAlign: "center", color: "#64748b", padding: "20px" }}>
-                                    No self-service wallet recharge requests recorded yet.
-                                </td>
-                            </tr>
-                        ) : (
-                            filteredUserRecharges.map((r) => (
-                                <tr key={r.transaction_id}>
-                                    <td>{r.time}</td>
-                                    <td><strong>{r.employee_code}</strong></td>
-                                    <td>{r.employee_name}</td>
-                                    <td>
-                                        <strong style={{ color: "#16a34a", fontSize: "15px" }}>
-                                            ₹{parseFloat(r.amount).toFixed(2)}
-                                        </strong>
-                                    </td>
-                                    <td>
-                                        <span className="method-badge upi" style={{ background: "#f0fdf4", color: "#16a34a", padding: "4px 8px", borderRadius: "6px", fontSize: "12px", fontWeight: "600" }}>
-                                            {r.payment_method}
-                                        </span>
-                                    </td>
-                                    <td>
-                                        <strong style={{ letterSpacing: "0.5px", color: "#1e293b" }}>
-                                            {r.utr_number}
-                                        </strong>
-                                    </td>
-                                    <td>
-                                        {r.status === "PENDING" ? (
-                                            <div style={{ display: "flex", gap: "8px" }}>
-                                                <button
-                                                    className="approve-user-btn"
-                                                    onClick={() => handleOpenApproveModal(r)}
-                                                >
-                                                    <FaCheck /> Recharge
-                                                </button>
-                                                <button
-                                                    className="cancel-user-btn"
-                                                    onClick={() => handleCancelUserRecharge(r.transaction_id, r.employee_name)}
-                                                >
-                                                    <FaTimes /> Cancel
-                                                </button>
-                                            </div>
-                                        ) : (
-                                            <span
-                                                className={
-                                                    r.status === "SUCCESS"
-                                                        ? "status-badge-success"
-                                                        : "status-badge-cancelled"
-                                                }
-                                            >
-                                                {r.status === "SUCCESS" ? "RECHARGED" : "CANCELLED"}
-                                            </span>
-                                        )}
-                                    </td>
-                                </tr>
-                            ))
-                        )}
-                    </tbody>
-                </table>
-            </div>
-
             {/* EMPLOYEE TABLE */}
             <div className="wallet-table-card">
                 <h2>Employee Canteen Wallets (Database Records)</h2>
@@ -499,6 +436,99 @@ function WalletManagement() {
                                                 Deduct
                                             </button>
                                         </div>
+                                    </td>
+                                </tr>
+                            ))
+                        )}
+                    </tbody>
+                </table>
+            </div>
+
+            {/* REPLACED LINE CHART: USER SELF-SERVICE WALLET RECHARGES PANEL */}
+            <div className="user-recharges-card">
+                <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "6px" }}>
+                    <FaQrcode style={{ fontSize: "22px", color: "#2563eb" }} />
+                    <h2 style={{ margin: 0 }}>Wallet Recharges & Self-Service Requests</h2>
+                </div>
+                <p>Process pending self-service UPI/QR recharge requests and view wallet top-up history.</p>
+
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Date & Time</th>
+                            <th>Employee Code</th>
+                            <th>Employee Name</th>
+                            <th>Amount (₹)</th>
+                            <th>Method</th>
+                            <th>Transaction / UTR ID</th>
+                            <th>Actions / Status</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {filteredUserRecharges.length === 0 ? (
+                            <tr>
+                                <td colSpan="7" style={{ textAlign: "center", color: "#64748b", padding: "20px" }}>
+                                    No wallet recharge records found for the selected period.
+                                </td>
+                            </tr>
+                        ) : (
+                            filteredUserRecharges.map((r) => (
+                                <tr key={r.transaction_id}>
+                                    <td>{r.time}</td>
+                                    <td><strong>{r.employee_code}</strong></td>
+                                    <td>{r.employee_name}</td>
+                                    <td>
+                                        <strong style={{ color: "#16a34a", fontSize: "15px" }}>
+                                            ₹{parseFloat(r.amount).toFixed(2)}
+                                        </strong>
+                                    </td>
+                                    <td>
+                                        <span 
+                                            className="method-badge upi" 
+                                            style={{ 
+                                                 background: r.payment_method === "Admin Manual" ? "#eff6ff" : "#f0fdf4", 
+                                                color: r.payment_method === "Admin Manual" ? "#2563eb" : "#16a34a", 
+                                                padding: "4px 8px", 
+                                                borderRadius: "6px", 
+                                                fontSize: "12px", 
+                                                fontWeight: "600" 
+                                            }}
+                                        >
+                                            {r.payment_method}
+                                        </span>
+                                    </td>
+                                    <td>
+                                        <strong style={{ letterSpacing: "0.5px", color: "#1e293b" }}>
+                                            {r.utr_number}
+                                        </strong>
+                                    </td>
+                                    <td>
+                                        {r.status === "PENDING" ? (
+                                            <div style={{ display: "flex", gap: "8px" }}>
+                                                <button
+                                                    className="approve-user-btn"
+                                                    onClick={() => handleOpenApproveModal(r)}
+                                                >
+                                                    <FaCheck /> Recharge
+                                                </button>
+                                                <button
+                                                    className="cancel-user-btn"
+                                                    onClick={() => handleCancelUserRecharge(r.transaction_id, r.employee_name)}
+                                                >
+                                                    <FaTimes /> Cancel
+                                                </button>
+                                            </div>
+                                        ) : (
+                                            <span
+                                                className={
+                                                    r.status === "SUCCESS"
+                                                        ? "status-badge-success"
+                                                        : "status-badge-cancelled"
+                                                }
+                                            >
+                                                {r.status === "SUCCESS" ? "RECHARGED" : "CANCELLED"}
+                                            </span>
+                                        )}
                                     </td>
                                 </tr>
                             ))

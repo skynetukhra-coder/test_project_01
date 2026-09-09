@@ -364,6 +364,9 @@ function MenuManagement({ searchQuery = "" }) {
                                     (item.issued && Number(item.issued) > 0) &&
                                     (!searchQuery || item.item_name.toLowerCase().includes(searchQuery.toLowerCase()))
                                 );
+
+                                const totalIssued = filteredItems.reduce((sum, item) => sum + Number(item.issued ?? 0), 0);
+                                const totalAmount = filteredItems.reduce((sum, item) => sum + ((item.issued ?? 0) * Number(item.price)), 0);
                                 
                                 printWindow.document.write(`
                                     <html>
@@ -377,6 +380,7 @@ function MenuManagement({ searchQuery = "" }) {
                                                 th, td { border: 1px solid #ddd; padding: 10px; text-align: left; font-size: 13px; }
                                                 th { background-color: #f8f9fa; color: #2c3e50; }
                                                 tr:nth-child(even) { background-color: #f9f9f9; }
+                                                tfoot td { font-weight: bold; background-color: #f1f5f9; border-top: 2px solid #2c3e50; font-size: 13px; }
                                             </style>
                                         </head>
                                         <body>
@@ -397,11 +401,19 @@ function MenuManagement({ searchQuery = "" }) {
                                                         <tr>
                                                             <td>${item.item_name}</td>
                                                             <td>${item.issued ?? 0}</td>
-                                                            <td>₹${item.price}</td>
+                                                            <td>₹${Number(item.price).toFixed(2)}</td>
                                                             <td>₹${((item.issued ?? 0) * item.price).toFixed(2)}</td>
                                                         </tr>
                                                     `).join('')}
                                                 </tbody>
+                                                <tfoot>
+                                                    <tr>
+                                                        <td>Total</td>
+                                                        <td>${totalIssued}</td>
+                                                        <td>-</td>
+                                                        <td>₹${totalAmount.toFixed(2)}</td>
+                                                    </tr>
+                                                </tfoot>
                                             </table>
                                             <script>
                                                 window.onload = function() {
@@ -441,6 +453,9 @@ function MenuManagement({ searchQuery = "" }) {
                                     (item.issued && Number(item.issued) > 0) &&
                                     (!searchQuery || item.item_name.toLowerCase().includes(searchQuery.toLowerCase()))
                                 );
+
+                                const totalIssued = filteredItems.reduce((sum, item) => sum + Number(item.issued ?? 0), 0);
+                                const totalAmount = filteredItems.reduce((sum, item) => sum + ((item.issued ?? 0) * Number(item.price)), 0);
                                 
                                 const headers = ["Item Name", "Issued Items", "Price", "Total Price"];
                                 const rows = filteredItems.map(item => [
@@ -449,6 +464,7 @@ function MenuManagement({ searchQuery = "" }) {
                                     item.price,
                                     ((item.issued ?? 0) * item.price).toFixed(2)
                                 ]);
+                                rows.push(["Total", totalIssued, "-", totalAmount.toFixed(2)]);
 
                                 const csvContent = "data:text/csv;charset=utf-8," 
                                     + [headers.join(","), ...rows.map(r => r.join(","))].join("\n");

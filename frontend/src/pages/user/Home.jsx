@@ -37,7 +37,7 @@ function Home() {
   });
 
   // Feedback State
-  const [feedbackRating, setFeedbackRating] = useState(5);
+  const [feedbackRating, setFeedbackRating] = useState(1);
   const [hoverRating, setHoverRating] = useState(0);
   const [feedbackCategory, setFeedbackCategory] = useState("General");
   const [feedbackMessage, setFeedbackMessage] = useState("");
@@ -180,7 +180,7 @@ function Home() {
         if (res.data.success) {
           setFeedbackSuccessMsg("Thank you! Your feedback has been submitted successfully.");
           setFeedbackMessage("");
-          setFeedbackRating(5);
+          setFeedbackRating(1);
           setFeedbackCategory("General");
           setTimeout(() => setFeedbackSuccessMsg(""), 5000);
         } else {

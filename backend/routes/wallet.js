@@ -467,7 +467,7 @@ router.post("/recharge", async (req, res) => {
     }
 });
 
-// GET ALL PENDING USER SELF-SERVICE RECHARGES FOR ADMIN PANEL
+// GET ALL WALLET RECHARGES (USER SELF-SERVICE & ADMIN) FOR ADMIN PANEL
 router.get("/user-recharges", async (req, res) => {
     try {
         const [rows] = await db.query(`
@@ -478,14 +478,14 @@ router.get("/user-recharges", async (req, res) => {
                 e.full_name AS employee_name,
                 e.designation,
                 wt.amount,
-                IFNULL(wt.payment_method, 'UPI') AS payment_method,
+                IFNULL(wt.payment_method, CASE WHEN wt.title = 'Admin Recharge' THEN 'Admin Manual' ELSE 'UPI' END) AS payment_method,
                 IFNULL(wt.utr_number, '-') AS utr_number,
-                IFNULL(wt.status, 'PENDING') AS status,
+                IFNULL(wt.status, 'SUCCESS') AS status,
                 wt.created_at AS rawDate,
                 DATE_FORMAT(wt.created_at, '%d-%m-%Y %h:%i %p') AS time
             FROM wallet_transactions wt
             JOIN employee e ON wt.employee_id = e.employee_id
-            WHERE wt.type = 'credit' AND wt.status = 'PENDING'
+            WHERE wt.type = 'credit'
             ORDER BY wt.transaction_id DESC
         `);
         res.json(rows);
