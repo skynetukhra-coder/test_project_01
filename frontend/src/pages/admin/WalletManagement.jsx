@@ -69,6 +69,8 @@ function WalletManagement() {
     const [endDate, setEndDate] = useState("");
     const [currentPage, setCurrentPage] = useState(1);
     const itemsPerPage = 10;
+    const [currentRechargePage, setCurrentRechargePage] = useState(1);
+    const rechargeItemsPerPage = 10;
 
     // Modal control
     const [isModalOpen, setIsModalOpen] = useState(false);
@@ -113,37 +115,36 @@ function WalletManagement() {
         setIsModalOpen(true);
     };
 
-    const handleOpenApproveModal = (uRecharge) => {
-        const emp = employees.find(e => e.employee_id === uRecharge.employee_id) || {
-            employee_id: uRecharge.employee_id,
-            full_name: uRecharge.employee_name,
-            username: uRecharge.employee_code
-        };
+    const handleOpenApproveModal = (recharge) => {
+        const emp = employees.find(e => e.employee_id === recharge.employee_id);
+        if (!emp) {
+            alert("Employee details not found.");
+            return;
+        }
         setSelectedEmp(emp);
         setModifyType("RECHARGE");
-        setAmount(uRecharge.amount);
-        setPendingTxId(uRecharge.transaction_id);
-        setIsAutoFilled(true);
+        setAmount(recharge.amount);
         setAdminPassword("");
+        setPendingTxId(recharge.transaction_id);
+        setIsAutoFilled(true);
         setIsModalOpen(true);
     };
 
-    const handleModifySubmit = async (e) => {
+    const handleModalSubmit = async (e) => {
         e.preventDefault();
-        if (!selectedEmp || !amount || !adminPassword) {
-            alert("Please fill in all required fields.");
-            return;
-        }
-
         const amtVal = parseFloat(amount);
         if (isNaN(amtVal) || amtVal <= 0) {
-            alert("Please enter a valid positive amount.");
+            alert("Please enter a valid amount greater than zero.");
+            return;
+        }
+        if (!adminPassword) {
+            alert("Admin password is required to authorize this modification.");
             return;
         }
 
         try {
             if (pendingTxId) {
-                // Approving a user self-service recharge
+                // Approving a user self-service recharge request
                 const res = await axios.post(`${API_BASE}/approve-user-recharge`, {
                     transaction_id: pendingTxId,
                     admin_id: adminUser.employee_id,
@@ -201,6 +202,7 @@ function WalletManagement() {
         setEndDate("");
         setSearchTerm("");
         setCurrentPage(1);
+        setCurrentRechargePage(1);
     };
 
     const handleSetToday = () => {
@@ -208,31 +210,51 @@ function WalletManagement() {
         setStartDate(t);
         setEndDate(t);
         setCurrentPage(1);
+        setCurrentRechargePage(1);
     };
 
     const handleSearchChange = (e) => {
         setSearchTerm(e.target.value);
         setCurrentPage(1);
+        setCurrentRechargePage(1);
     };
 
     const handleStartDateChange = (val) => {
         setStartDate(val);
         setCurrentPage(1);
+        setCurrentRechargePage(1);
     };
 
     const handleEndDateChange = (val) => {
         setEndDate(val);
         setCurrentPage(1);
+        setCurrentRechargePage(1);
     };
 
     const filteredUserRecharges = userRecharges.filter(r => {
-        if (!startDate && !endDate) return true;
-        return isDateInRange(r.rawDate, startDate, endDate);
+        if (startDate || endDate) {
+            if (!isDateInRange(r.rawDate, startDate, endDate)) return false;
+        }
+        if (searchTerm.trim() !== "") {
+            const term = searchTerm.toLowerCase().trim();
+            const matchEmpName = r.employee_name && r.employee_name.toLowerCase().includes(term);
+            const matchEmpCode = r.employee_code && r.employee_code.toLowerCase().includes(term);
+            const matchUtr = r.utr_number && r.utr_number.toLowerCase().includes(term);
+            const matchMethod = r.payment_method && r.payment_method.toLowerCase().includes(term);
+            if (!matchEmpName && !matchEmpCode && !matchUtr && !matchMethod) return false;
+        }
+        return true;
     });
 
     const totalRechargeSum = filteredUserRecharges
         .filter(r => r.status === "SUCCESS")
         .reduce((sum, r) => sum + parseFloat(r.amount || 0), 0);
+
+    const totalRechargePages = Math.ceil(filteredUserRecharges.length / rechargeItemsPerPage) || 1;
+    const paginatedUserRecharges = filteredUserRecharges.slice(
+        (currentRechargePage - 1) * rechargeItemsPerPage,
+        currentRechargePage * rechargeItemsPerPage
+    );
 
     // Collect IDs of employees who have recharge activity on the selected date
     const dateRechargeEmpIds = new Set(
@@ -393,8 +415,7 @@ function WalletManagement() {
                                 type="date" 
                                 value={startDate} 
                                 onChange={(e) => handleStartDateChange(e.target.value)} 
-                                onClick={(e) => e.target.showPicker && e.target.showPicker()}
-                                onFocus={(e) => e.target.showPicker && e.target.showPicker()}
+                                onClick={(e) => { try { e.target.showPicker && e.target.showPicker(); } catch (_) {} }}
                                 style={{ cursor: "pointer" }}
                             />
                         </div>
@@ -404,8 +425,7 @@ function WalletManagement() {
                                 type="date" 
                                 value={endDate} 
                                 onChange={(e) => handleEndDateChange(e.target.value)} 
-                                onClick={(e) => e.target.showPicker && e.target.showPicker()}
-                                onFocus={(e) => e.target.showPicker && e.target.showPicker()}
+                                onClick={(e) => { try { e.target.showPicker && e.target.showPicker(); } catch (_) {} }}
                                 style={{ cursor: "pointer" }}
                             />
                         </div>
@@ -429,7 +449,7 @@ function WalletManagement() {
                             <FaSearch />
                             <input
                                 type="text"
-                                placeholder="Search Employee (All Database Records)..."
+                                placeholder="Search by employee name, code, UTR..."
                                 value={searchTerm}
                                 onChange={handleSearchChange}
                                 style={{ height: "100%", background: "transparent", border: "none", outline: "none" }}
@@ -513,14 +533,14 @@ function WalletManagement() {
                                 </td>
                             </tr>
                         ) : (
-                            filteredUserRecharges.map((r) => (
+                            paginatedUserRecharges.map((r) => (
                                 <tr key={r.transaction_id}>
                                     <td>{r.time}</td>
                                     <td><strong>{r.employee_code}</strong></td>
                                     <td>{r.employee_name}</td>
                                     <td>
                                         <strong style={{ color: "#16a34a", fontSize: "15px" }}>
-                                            ₹{parseFloat(r.amount).toFixed(2)}
+                                             ₹{parseFloat(r.amount).toFixed(2)}
                                         </strong>
                                     </td>
                                     <td>
@@ -576,6 +596,68 @@ function WalletManagement() {
                         )}
                     </tbody>
                 </table>
+
+                {/* PAGINATION: 10 RECORDS PER PAGE FOR WALLET RECHARGES */}
+                {filteredUserRecharges.length > 0 && (
+                    <div className="wallet-pagination-container">
+                        <div className="wallet-pagination-info">
+                            Showing <strong>{(currentRechargePage - 1) * rechargeItemsPerPage + 1}</strong> to{" "}
+                            <strong>{Math.min(currentRechargePage * rechargeItemsPerPage, filteredUserRecharges.length)}</strong> of{" "}
+                            <strong>{filteredUserRecharges.length}</strong> recharge records
+                            {totalRechargePages > 1 && <span> (Page {currentRechargePage} of {totalRechargePages})</span>}
+                        </div>
+
+                        <div className="wallet-pagination-controls">
+                            <button
+                                className="pagination-btn"
+                                onClick={() => setCurrentRechargePage(1)}
+                                disabled={currentRechargePage === 1}
+                                title="First Page"
+                            >
+                                &laquo;
+                            </button>
+                            <button
+                                className="pagination-btn"
+                                onClick={() => setCurrentRechargePage(p => Math.max(p - 1, 1))}
+                                disabled={currentRechargePage === 1}
+                                title="Previous Page"
+                            >
+                                &lsaquo; Prev
+                            </button>
+
+                            {getPageNumbers(currentRechargePage, totalRechargePages).map((pageNum, idx) =>
+                                pageNum === "..." ? (
+                                    <span key={`recharge-ellipsis-${idx}`} className="pagination-ellipsis">...</span>
+                                ) : (
+                                    <button
+                                        key={`recharge-${pageNum}`}
+                                        className={`pagination-btn page-num-btn ${currentRechargePage === pageNum ? "active" : ""}`}
+                                        onClick={() => setCurrentRechargePage(pageNum)}
+                                    >
+                                        {pageNum}
+                                    </button>
+                                )
+                            )}
+
+                            <button
+                                className="pagination-btn"
+                                onClick={() => setCurrentRechargePage(p => Math.min(p + 1, totalRechargePages))}
+                                disabled={currentRechargePage === totalRechargePages}
+                                title="Next Page"
+                            >
+                                Next &rsaquo;
+                            </button>
+                            <button
+                                className="pagination-btn"
+                                onClick={() => setCurrentRechargePage(totalRechargePages)}
+                                disabled={currentRechargePage === totalRechargePages}
+                                title="Last Page"
+                            >
+                                &raquo;
+                            </button>
+                        </div>
+                    </div>
+                )}
             </div>
 
             {/* 2. EMPLOYEE TABLE (MOVED BELOW RECHARGES, 10 PER PAGE WITH SEARCH ACROSS ALL EMPLOYEES) */}
