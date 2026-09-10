@@ -71,6 +71,7 @@ function WalletManagement() {
     const itemsPerPage = 10;
     const [currentRechargePage, setCurrentRechargePage] = useState(1);
     const rechargeItemsPerPage = 10;
+    const [methodFilter, setMethodFilter] = useState("ALL"); // ALL, UPI_QR, ADMIN_MANUAL
 
     // Modal control
     const [isModalOpen, setIsModalOpen] = useState(false);
@@ -201,6 +202,7 @@ function WalletManagement() {
         setStartDate("");
         setEndDate("");
         setSearchTerm("");
+        setMethodFilter("ALL");
         setCurrentPage(1);
         setCurrentRechargePage(1);
     };
@@ -231,9 +233,29 @@ function WalletManagement() {
         setCurrentRechargePage(1);
     };
 
+    const handleMethodFilterChange = (val) => {
+        setMethodFilter(val);
+        setCurrentRechargePage(1);
+    };
+
+    const isMatchMethod = (paymentMethod, filter) => {
+        if (!filter || filter === "ALL") return true;
+        const pm = (paymentMethod || "").toLowerCase();
+        if (filter === "ADMIN_MANUAL") {
+            return pm.includes("admin") || pm.includes("manual");
+        }
+        if (filter === "UPI_QR") {
+            return pm.includes("upi") || pm.includes("qr") || pm.includes("scan") || pm.includes("chooser");
+        }
+        return true;
+    };
+
     const filteredUserRecharges = userRecharges.filter(r => {
         if (startDate || endDate) {
             if (!isDateInRange(r.rawDate, startDate, endDate)) return false;
+        }
+        if (methodFilter !== "ALL") {
+            if (!isMatchMethod(r.payment_method, methodFilter)) return false;
         }
         if (searchTerm.trim() !== "") {
             const term = searchTerm.toLowerCase().trim();
@@ -518,7 +540,21 @@ function WalletManagement() {
                             <th>Employee Code</th>
                             <th>Employee Name</th>
                             <th>Amount (₹)</th>
-                            <th>Method</th>
+                            <th style={{ minWidth: "165px" }}>
+                                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "8px" }}>
+                                    <span>Method</span>
+                                    <select
+                                        value={methodFilter}
+                                        onChange={(e) => handleMethodFilterChange(e.target.value)}
+                                        className="method-header-dropdown"
+                                        title="Filter by payment method"
+                                    >
+                                        <option value="ALL">ALL</option>
+                                        <option value="UPI_QR">UPI/QR scan</option>
+                                        <option value="ADMIN_MANUAL">Admin Manual</option>
+                                    </select>
+                                </div>
+                            </th>
                             <th>Transaction / UTR ID</th>
                             <th>Actions / Status</th>
                         </tr>
