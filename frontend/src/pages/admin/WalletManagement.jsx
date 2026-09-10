@@ -16,14 +16,59 @@ import axios from "axios";
 
 const API_BASE = (window.API_BASE_URL || "http://localhost:5000") + "/api/wallet";
 
+const getTodayStr = () => {
+    const d = new Date();
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, "0");
+    const day = String(d.getDate()).padStart(2, "0");
+    return `${year}-${month}-${day}`;
+};
+
+const isDateInRange = (dateVal, startStr, endStr) => {
+    if (!dateVal) return false;
+    const d = new Date(dateVal);
+    if (isNaN(d.getTime())) return false;
+    const dateYMD = d.toLocaleDateString("en-CA");
+    if (startStr && dateYMD < startStr) return false;
+    if (endStr && dateYMD > endStr) return false;
+    return true;
+};
+
+const getPageNumbers = (current, total) => {
+    if (total <= 7) {
+        return Array.from({ length: total }, (_, i) => i + 1);
+    }
+    const pages = [];
+    if (current <= 4) {
+        for (let i = 1; i <= 5; i++) pages.push(i);
+        pages.push("...");
+        pages.push(total);
+    } else if (current >= total - 3) {
+        pages.push(1);
+        pages.push("...");
+        for (let i = total - 4; i <= total; i++) pages.push(i);
+    } else {
+        pages.push(1);
+        pages.push("...");
+        pages.push(current - 1);
+        pages.push(current);
+        pages.push(current + 1);
+        pages.push("...");
+        pages.push(total);
+    }
+    return pages;
+};
+
 function WalletManagement() {
     const [employees, setEmployees] = useState([]);
     const [recharges, setRecharges] = useState([]);
     const [userRecharges, setUserRecharges] = useState([]);
     const [searchTerm, setSearchTerm] = useState("");
     const [rechargeToday, setRechargeToday] = useState(0);
-    const [startDate, setStartDate] = useState("");
-    const [endDate, setEndDate] = useState("");
+    const [startDate, setStartDate] = useState(getTodayStr());
+    const [endDate, setEndDate] = useState(getTodayStr());
+    const [currentPage, setCurrentPage] = useState(1);
+    const itemsPerPage = 10;
 
     // Modal control
     const [isModalOpen, setIsModalOpen] = useState(false);
@@ -151,38 +196,79 @@ function WalletManagement() {
         }
     };
 
-    const filteredEmployees = employees.filter(
-        (emp) =>
-            emp.full_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-            emp.username.toLowerCase().includes(searchTerm.toLowerCase())
-    );
-
-    const totalWalletBalance = employees.reduce((sum, emp) => sum + parseFloat(emp.balance), 0);
-    const hasTamperedWallets = employees.some(emp => emp.is_tampered);
-
     const handleReset = () => {
         setStartDate("");
         setEndDate("");
+        setSearchTerm("");
+        setCurrentPage(1);
+    };
+
+    const handleSetToday = () => {
+        const t = getTodayStr();
+        setStartDate(t);
+        setEndDate(t);
+        setCurrentPage(1);
+    };
+
+    const handleSearchChange = (e) => {
+        setSearchTerm(e.target.value);
+        setCurrentPage(1);
+    };
+
+    const handleStartDateChange = (val) => {
+        setStartDate(val);
+        setCurrentPage(1);
+    };
+
+    const handleEndDateChange = (val) => {
+        setEndDate(val);
+        setCurrentPage(1);
     };
 
     const filteredUserRecharges = userRecharges.filter(r => {
         if (!startDate && !endDate) return true;
-
-        const logTime = new Date(r.rawDate).getTime();
-        if (startDate) {
-            const start = new Date(startDate + "T00:00:00");
-            if (logTime < start.getTime()) return false;
-        }
-        if (endDate) {
-            const end = new Date(endDate + "T23:59:59.999");
-            if (logTime > end.getTime()) return false;
-        }
-        return true;
+        return isDateInRange(r.rawDate, startDate, endDate);
     });
 
     const totalRechargeSum = filteredUserRecharges
         .filter(r => r.status === "SUCCESS")
         .reduce((sum, r) => sum + parseFloat(r.amount || 0), 0);
+
+    // Collect IDs of employees who have recharge activity on the selected date
+    const dateRechargeEmpIds = new Set(
+        filteredUserRecharges.map(r => Number(r.employee_id))
+    );
+
+    const filteredEmployees = employees.filter((emp) => {
+        // When searching, search the entire employee list across full name, employee code, and designation
+        if (searchTerm.trim() !== "") {
+            const term = searchTerm.toLowerCase().trim();
+            return (
+                (emp.full_name && emp.full_name.toLowerCase().includes(term)) ||
+                (emp.username && emp.username.toLowerCase().includes(term)) ||
+                (emp.designation && emp.designation.toLowerCase().includes(term))
+            );
+        }
+
+        // When date filter is active, show only records of that particular selected date
+        if (startDate || endDate) {
+            const hasRecharge = dateRechargeEmpIds.has(Number(emp.employee_id));
+            const hasDateMatch = emp.updated_at && isDateInRange(emp.updated_at, startDate, endDate);
+            return hasRecharge || hasDateMatch;
+        }
+
+        // No search and no date filter -> display all database employee wallets
+        return true;
+    });
+
+    const totalWalletBalance = employees.reduce((sum, emp) => sum + parseFloat(emp.balance || 0), 0);
+    const hasTamperedWallets = employees.some(emp => emp.is_tampered);
+
+    const totalPages = Math.ceil(filteredEmployees.length / itemsPerPage) || 1;
+    const paginatedEmployees = filteredEmployees.slice(
+        (currentPage - 1) * itemsPerPage,
+        currentPage * itemsPerPage
+    );
 
     const printReport = () => {
         const printWindow = window.open("", "_blank");
@@ -306,9 +392,9 @@ function WalletManagement() {
                             <input 
                                 type="date" 
                                 value={startDate} 
-                                onChange={(e) => setStartDate(e.target.value)} 
-                                onClick={(e) => e.target.showPicker()}
-                                onFocus={(e) => e.target.showPicker()}
+                                onChange={(e) => handleStartDateChange(e.target.value)} 
+                                onClick={(e) => e.target.showPicker && e.target.showPicker()}
+                                onFocus={(e) => e.target.showPicker && e.target.showPicker()}
                                 style={{ cursor: "pointer" }}
                             />
                         </div>
@@ -317,13 +403,16 @@ function WalletManagement() {
                             <input 
                                 type="date" 
                                 value={endDate} 
-                                onChange={(e) => setEndDate(e.target.value)} 
-                                onClick={(e) => e.target.showPicker()}
-                                onFocus={(e) => e.target.showPicker()}
+                                onChange={(e) => handleEndDateChange(e.target.value)} 
+                                onClick={(e) => e.target.showPicker && e.target.showPicker()}
+                                onFocus={(e) => e.target.showPicker && e.target.showPicker()}
                                 style={{ cursor: "pointer" }}
                             />
                         </div>
-                        <button className="reset-filter-btn" onClick={handleReset}>
+                        <button className="today-filter-btn" onClick={handleSetToday} title="Show Today's Date">
+                            Today
+                        </button>
+                        <button className="reset-filter-btn" onClick={handleReset} title="Clear Filters (Show All Database Records)">
                             Reset
                         </button>
                         <button className="print-report-btn" onClick={printReport}>
@@ -340,9 +429,9 @@ function WalletManagement() {
                             <FaSearch />
                             <input
                                 type="text"
-                                placeholder="Search Employee..."
+                                placeholder="Search Employee (All Database Records)..."
                                 value={searchTerm}
-                                onChange={(e) => setSearchTerm(e.target.value)}
+                                onChange={handleSearchChange}
                                 style={{ height: "100%", background: "transparent", border: "none", outline: "none" }}
                             />
                         </div>
@@ -387,70 +476,20 @@ function WalletManagement() {
                 </div>
             </div>
 
-            {/* EMPLOYEE TABLE */}
-            <div className="wallet-table-card">
-                <h2>Employee Canteen Wallets (Database Records)</h2>
-                <table>
-                    <thead>
-                        <tr>
-                            <th>Employee Code</th>
-                            <th>Name</th>
-                            <th>Designation</th>
-                            <th>Wallet Balance</th>
-                            <th>Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {filteredEmployees.length === 0 ? (
-                            <tr>
-                                <td colSpan="5" style={{ textAlign: "center", color: "#666" }}>
-                                    No employee wallets found.
-                                </td>
-                            </tr>
-                        ) : (
-                            filteredEmployees.map((emp) => (
-                                <tr key={emp.employee_id}>
-                                    <td>{emp.username}</td>
-                                    <td>{emp.full_name}</td>
-                                    <td>{emp.designation || "N/A"}</td>
-                                    <td>
-                                        <strong>₹{parseFloat(emp.balance).toFixed(2)}</strong>
-                                        {emp.is_tampered && (
-                                            <span className="tamper-badge" title="HMAC Signature Mismatch!">
-                                                TAMPERED
-                                            </span>
-                                        )}
-                                    </td>
-                                    <td>
-                                        <div style={{ display: "flex", gap: "8px" }}>
-                                            <button
-                                                className="recharge-btn"
-                                                onClick={() => handleOpenModal(emp, "RECHARGE")}
-                                            >
-                                                Recharge
-                                            </button>
-                                            <button
-                                                className="deduct-btn"
-                                                onClick={() => handleOpenModal(emp, "DEDUCT")}
-                                            >
-                                                Deduct
-                                            </button>
-                                        </div>
-                                    </td>
-                                </tr>
-                            ))
-                        )}
-                    </tbody>
-                </table>
-            </div>
-
-            {/* REPLACED LINE CHART: USER SELF-SERVICE WALLET RECHARGES PANEL */}
+            {/* 1. USER SELF-SERVICE WALLET RECHARGES PANEL (MOVED ABOVE EMPLOYEE WALLETS) */}
             <div className="user-recharges-card">
-                <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "6px" }}>
-                    <FaQrcode style={{ fontSize: "22px", color: "#2563eb" }} />
-                    <h2 style={{ margin: 0 }}>Wallet Recharges & Self-Service Requests</h2>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "12px", marginBottom: "6px" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                        <FaQrcode style={{ fontSize: "22px", color: "#2563eb" }} />
+                        <h2 style={{ margin: 0 }}>Wallet Recharges & Self-Service Requests</h2>
+                    </div>
+                    {(startDate || endDate) && (
+                        <span style={{ background: "#eff6ff", color: "#2563eb", padding: "5px 12px", borderRadius: "8px", fontSize: "13px", fontWeight: "600" }}>
+                            Date: {startDate === endDate ? startDate : `${startDate || 'Start'} to ${endDate || 'End'}`} &nbsp;|&nbsp; {filteredUserRecharges.length} {filteredUserRecharges.length === 1 ? 'Record' : 'Records'} &nbsp;|&nbsp; Total: ₹{totalRechargeSum.toLocaleString("en-IN", { minimumFractionDigits: 2 })}
+                        </span>
+                    )}
                 </div>
-                <p>Process pending self-service UPI/QR recharge requests and view wallet top-up history.</p>
+                <p>Process pending self-service UPI/QR recharge requests and view wallet top-up history of the selected date.</p>
 
                 <table>
                     <thead>
@@ -468,7 +507,9 @@ function WalletManagement() {
                         {filteredUserRecharges.length === 0 ? (
                             <tr>
                                 <td colSpan="7" style={{ textAlign: "center", color: "#64748b", padding: "20px" }}>
-                                    No wallet recharge records found for the selected period.
+                                    {startDate || endDate 
+                                        ? `No wallet recharge records found for ${startDate === endDate ? startDate : `${startDate} to ${endDate}`}.`
+                                        : "No wallet recharge records found."}
                                 </td>
                             </tr>
                         ) : (
@@ -535,6 +576,141 @@ function WalletManagement() {
                         )}
                     </tbody>
                 </table>
+            </div>
+
+            {/* 2. EMPLOYEE TABLE (MOVED BELOW RECHARGES, 10 PER PAGE WITH SEARCH ACROSS ALL EMPLOYEES) */}
+            <div className="wallet-table-card">
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "12px", marginBottom: "16px" }}>
+                    <h2 style={{ margin: 0 }}>Employee Canteen Wallets (Database Records)</h2>
+                    <span style={{ color: "#64748b", fontSize: "13px" }}>
+                        {searchTerm ? (
+                            <span>Search results across <strong>all {employees.length} employees</strong>: <strong>{filteredEmployees.length}</strong> matching</span>
+                        ) : (startDate || endDate) ? (
+                            <span>Wallets active/recharged for selected date: <strong>{filteredEmployees.length}</strong> records</span>
+                        ) : (
+                            <span>Total database records: <strong>{filteredEmployees.length}</strong></span>
+                        )}
+                    </span>
+                </div>
+
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Employee Code</th>
+                            <th>Name</th>
+                            <th>Designation</th>
+                            <th>Wallet Balance</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {filteredEmployees.length === 0 ? (
+                            <tr>
+                                <td colSpan="5" style={{ textAlign: "center", color: "#666", padding: "24px" }}>
+                                    {searchTerm 
+                                        ? `No employee wallets found matching "${searchTerm}".`
+                                        : (startDate || endDate) 
+                                            ? `No employee wallet records found for the selected date (${startDate === endDate ? startDate : `${startDate} to ${endDate}`}). Use search above to find any employee from the entire database.`
+                                            : "No employee wallets found."}
+                                </td>
+                            </tr>
+                        ) : (
+                            paginatedEmployees.map((emp) => (
+                                <tr key={emp.employee_id}>
+                                    <td>{emp.username}</td>
+                                    <td>{emp.full_name}</td>
+                                    <td>{emp.designation || "N/A"}</td>
+                                    <td>
+                                        <strong>₹{parseFloat(emp.balance).toFixed(2)}</strong>
+                                        {emp.is_tampered && (
+                                            <span className="tamper-badge" title="HMAC Signature Mismatch!">
+                                                TAMPERED
+                                            </span>
+                                        )}
+                                    </td>
+                                    <td>
+                                        <div style={{ display: "flex", gap: "8px" }}>
+                                            <button
+                                                className="recharge-btn"
+                                                onClick={() => handleOpenModal(emp, "RECHARGE")}
+                                            >
+                                                Recharge
+                                            </button>
+                                            <button
+                                                className="deduct-btn"
+                                                onClick={() => handleOpenModal(emp, "DEDUCT")}
+                                            >
+                                                Deduct
+                                            </button>
+                                        </div>
+                                    </td>
+                                </tr>
+                            ))
+                        )}
+                    </tbody>
+                </table>
+
+                {/* PAGINATION: 10 RECORDS PER PAGE */}
+                {filteredEmployees.length > 0 && (
+                    <div className="wallet-pagination-container">
+                        <div className="wallet-pagination-info">
+                            Showing <strong>{(currentPage - 1) * itemsPerPage + 1}</strong> to{" "}
+                            <strong>{Math.min(currentPage * itemsPerPage, filteredEmployees.length)}</strong> of{" "}
+                            <strong>{filteredEmployees.length}</strong> records
+                            {totalPages > 1 && <span> (Page {currentPage} of {totalPages})</span>}
+                        </div>
+
+                        <div className="wallet-pagination-controls">
+                            <button
+                                className="pagination-btn"
+                                onClick={() => setCurrentPage(1)}
+                                disabled={currentPage === 1}
+                                title="First Page"
+                            >
+                                &laquo;
+                            </button>
+                            <button
+                                className="pagination-btn"
+                                onClick={() => setCurrentPage(p => Math.max(p - 1, 1))}
+                                disabled={currentPage === 1}
+                                title="Previous Page"
+                            >
+                                &lsaquo; Prev
+                            </button>
+
+                            {getPageNumbers(currentPage, totalPages).map((pageNum, idx) =>
+                                pageNum === "..." ? (
+                                    <span key={`ellipsis-${idx}`} className="pagination-ellipsis">...</span>
+                                ) : (
+                                    <button
+                                        key={pageNum}
+                                        className={`pagination-btn page-num-btn ${currentPage === pageNum ? "active" : ""}`}
+                                        onClick={() => setCurrentPage(pageNum)}
+                                    >
+                                        {pageNum}
+                                    </button>
+                                )
+                            )}
+
+                            <button
+                                className="pagination-btn"
+                                onClick={() => setCurrentPage(p => Math.min(p + 1, totalPages))}
+                                disabled={currentPage === totalPages}
+                                title="Next Page"
+                            >
+                                Next &rsaquo;
+                            </button>
+                            <button
+                                className="pagination-btn"
+                                onClick={() => setCurrentPage(totalPages)}
+                                disabled={currentPage === totalPages}
+                                title="Last Page"
+                            >
+                                &raquo;
+                            </button>
+                        </div>
+                    </div>
+                )}
             </div>
 
             {/* MODAL: RECHARGE / DEDUCT WALLET BALANCE */}

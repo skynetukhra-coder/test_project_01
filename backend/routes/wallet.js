@@ -24,7 +24,8 @@ router.get("/list", async (req, res) => {
                 e.full_name,
                 e.designation,
                 IFNULL(w.balance, 0.00) AS balance,
-                w.signature
+                w.signature,
+                w.updated_at
             FROM employee e
             LEFT JOIN wallets w ON e.employee_id = w.employee_id
             WHERE e.role != 'ADMIN'
