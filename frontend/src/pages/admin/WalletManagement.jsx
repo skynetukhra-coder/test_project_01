@@ -65,8 +65,8 @@ function WalletManagement() {
     const [userRecharges, setUserRecharges] = useState([]);
     const [searchTerm, setSearchTerm] = useState("");
     const [rechargeToday, setRechargeToday] = useState(0);
-    const [startDate, setStartDate] = useState(getTodayStr());
-    const [endDate, setEndDate] = useState(getTodayStr());
+    const [startDate, setStartDate] = useState("");
+    const [endDate, setEndDate] = useState("");
     const [currentPage, setCurrentPage] = useState(1);
     const itemsPerPage = 10;
 
